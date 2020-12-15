@@ -1,0 +1,317 @@
+---
+title: "DATA2902 Group Project"
+author: "T09OC Early 01: Blake Nielson, Aditya Pillai, Christopher Tong, Hrishikesh Masurkar"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: hide
+---
+```{r}
+library(rmarkdown)
+#draft("mypaper.Rmd", template="pdf", package="pinp", edit=FALSE)
+#render("mypaper.Rmd")
+#install.packages('tinytex')
+#tinytex::install_tinytex()
+```
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(qtlcharts)
+library(plotly)
+library(GGally)
+library(leaps)
+library(caret)
+library(mplot)
+library(ggfortify)
+library(ggthemes)
+```
+
+## Abstract
+Our aim is to accurately predict percentage body fat for males using a multiple linear regression model from other, more accessible measurements. We aim to identify which variables are best predictors for percentage body fat and from these variables determine which ones are cost-efficient and practical.
+
+## Introduction
+One way to assess an individual’s health and fitness level is to estimate their percentage of body fat. However, traditional measurement techniques to estimate body fat percentage are often inconvenient and costly. Generally, body fat percentages are calculated using Siri's equation given by 
+$$PBF = \frac{495}{D}-450$$
+where $D =$ body density in $\text{gm/cm}^3$.  
+It is therefore desirable to produce an easily measurable way to determine one's body fat percentage using a linear regression model on measurements easier 
+
+## Data set
+### Dataset description
+The data was obtained from the BYU Human Performance Research Center and details measurements for 250 men. There are 16 variables in total associated with each observation. These variables are as follows:
+
+ - Body density determined by $BD = \frac{WA}{\frac{WA-WW}{CF}-LV}$
+  - $WA=$ weight in air (kg)
+  - $WW=$ weight in water (kg)
+  - $CF=$ water correction factor (how much space 1 gram of water takes up at particular temperature)
+  - $LV=$ residual lung volume
+- Percentage body fat calculated using Siri's equation $\left( PBF = \frac{495}{D}-450 \right)$
+- Weight in kg (converted from lbs)
+- Height in cm (converted from inches)
+- Neck, Chest, Abdomen, Waist, Hip, Thigh, Knee, Ankle, Bicep, Forearm and Wrist circumferences in cm
+ 
+No other details have been given about how the data was obtained in the study, and how individuals were selected, or where individuals were from, etc. Therefore, we could not ensure that the assumption of independence between the errors (Limitation).
+
+
+```{r, message=FALSE}
+# Read in data
+bodyfat = read_tsv("bodyfat.txt")
+# Convert height to cm and weight to kg
+bodyfat = bodyfat %>% mutate(Height = 2.54*Height, Weight=0.453592*Weight)
+
+bodyfat %>% gather() %>% ggplot() + aes(sample=value) + geom_qq() + geom_qq_line() + facet_wrap(~key, scales="free")
+```
+
+## Analysis
+### Data exploration
+
+```{r}
+# Plot interactive correlation matrix
+qtlcharts::iplotCorr(bodyfat)
+glimpse(bodyfat)
+# ggpairs(bodyfat) 
+
+```
+
+### Multiple linear regression
+
+### Model selection
+### Model checking
+### Model transformations
+
+## Results
+### Model performance
+
+## Discussion
+### Limitations
+#### Potential solutions
+
+## Conclusion
+
+## References
+- Wiki.stat.ucla.edu. 2020. SOCR Data BMI Regression - Socr. [online] Available at: <http://wiki.stat.ucla.edu/socr/index.php/SOCR_Data_BMI_Regression> [Accessed 2 November 2020].
+
+- Dasl.datadescription.com. 2020. Bodyfat | DASL. [online] Available at: <https://dasl.datadescription.com/datafile/bodyfat> [Accessed 2 November 2020].
+
+## Appendix
+
+We want to remove Density measurement, since this is generally harder to calculate.
+```{r}
+full_model = lm(Pct.BF ~ . - Density, data = bodyfat)  # Full model
+round(summary(full_model)$coef, 3)
+```
+
+
+#### Backward variable selection
+Backward search using AIC
+```{r}
+step.back.aic = step(full_model, 
+                     direction = "backward", 
+                     trace = FALSE)
+s = round(summary(step.back.aic)$coef,3)
+s
+
+#pulling out the variables which were kept
+# model_vars = as.data.frame(s[, 0])[2:9, 1]
+model_vars = c("Age", "Height", "Neck", "Abdomen", "Hip", "Thigh", "Forearm", "Wrist")
+```
+
+
+#### Backward with assumptions
+```{r}
+step_back_true = lm(Pct.BF ~ Neck + Abdomen + Hip + Thigh + Forearm + Wrist, data = bodyfat)
+summary(step_back_true)
+```
+
+
+#### Foward variable selection using AIC
+
+```{r}
+null_model = lm(Pct.BF ~ 1, data = bodyfat)
+step.forward.aic = step(null_model, 
+                        scope = list(lower = null_model, upper = full_model),
+                        direction = "forward", 
+                        trace = FALSE)
+round(summary(step.forward.aic)$coef,3)
+
+back = step(step_back_true, 
+                        scope = list(lower = null_model, upper = full_model),
+                        direction = "forward", 
+                        trace = FALSE)
+round(summary(back)$coef,3)
+```
+
+
+### Exhaustive searches
+```{r, warning = FALSE}
+exh = regsubsets(Pct.BF ~ . -Density, data = bodyfat, nvmax = 15)
+summary(exh)$outmat
+```
+
+
+## Model stability model selection 
+```{r}
+model_stab = lm(Pct.BF ~ Weight + Abdomen + Wrist, data = bodyfat)
+summary(model_stab)
+```
+
+
+# 10 fold cross validation results
+```{r, warning = FALSE}
+library(klaR)
+cv_all = train(
+  Pct.BF ~ . - Density,
+  bodyfat, 
+  method = "lm", 
+  trControl = trainControl(
+    method = "cv", number = 10, 
+    verboseIter = FALSE
+  )
+)
+
+
+cv_forward = train(
+  Pct.BF ~ Waist + Weight + Wrist + Bicep + Age + Thigh, 
+  bodyfat, 
+  method = "lm", 
+  trControl = trainControl(
+    method = "cv", number = 10, 
+    verboseIter = FALSE
+  )
+)
+
+cv_backward = train(
+  Pct.BF ~ Neck + Abdomen + Hip + Thigh + Forearm + Wrist, 
+  bodyfat, 
+  method = "lm", 
+  trControl = trainControl(
+    method = "cv", number = 10, 
+    verboseIter = FALSE
+  )
+)
+
+cv_stable = train(
+  Pct.BF ~ Weight + Abdomen + Wrist,
+  bodyfat,
+  method = "lm",
+  trControl = trainControl(
+    method = "cv", number = 10,
+    verboseIter = FALSE
+  )
+)
+
+
+as.data.frame(cv_all$resample)
+
+
+b_all = cv_all$resample %>% 
+  as.data.frame() %>%
+  dplyr::select(MAE, RMSE) %>%
+  gather(key = "metric", value = "error") %>%
+  ggplot() + 
+  aes(x = metric, y = error) + 
+  geom_boxplot() +
+  labs(title = "Errors for Full Model", 
+       x="Metrics") + 
+  theme_bw() + ylim(2.5,5.5)
+
+b_forward = cv_forward$resample %>% 
+  as.data.frame() %>%
+  dplyr::select(MAE, RMSE) %>%
+  gather(key = "metric", value = "error") %>%
+  ggplot() + 
+  aes(x = metric, y = error) + 
+  geom_boxplot() +
+  labs(title = "Errors for Forward Optimised Model", 
+       x = "Metrics") + 
+  theme_bw() + ylim(2.5,5.5)
+
+
+b_backward = cv_backward$resample %>% 
+  as.data.frame() %>%
+  dplyr::select(MAE, RMSE) %>%
+  gather(key = "metric", value = "error") %>%
+  ggplot() + 
+  aes(x = metric, y = error) + 
+  geom_boxplot() +
+  labs(title = "Errors for Backward Optimised Model", 
+       x = "Metrics") + 
+  theme_bw() + ylim(2.5,5.5)
+
+b_stable = cv_stable$resample %>% 
+  as.data.frame() %>% 
+  dplyr::select(MAE, RMSE) %>% 
+  gather(key = "metric", value = "error") %>% 
+  ggplot() + 
+  aes(x = metric, y = error) + 
+  geom_boxplot() + 
+  labs(title = "Errors for Model from stability plot") + 
+  theme_bw() + ylim(2.5,5.5)
+
+
+
+gridExtra::grid.arrange(b_all, b_forward, b_stable, b_forward, ncol = 4)
+  
+```
+
+
+
+### Appropriate Model Selection
+#### Variable inclusion plot
+```{r}
+#full_model
+#vis_full = vis(full_model, nbest = 10)
+#bgn_full = bglmnet(full_model)
+
+#plots dont show up in the knitted html
+#plot(bgn_full, which = "vip", interactive = TRUE)
+#plot(vis_full, which = "vip", interactive = TRUE)
+
+#loss vs dimension plot - these plots don't work as expected .
+#plot(vis_full, which = "lvk", interactive = TRUE)
+# plot(vis_full, which = "boot", interactive = TRUE)
+
+
+## More clustered plots (like in lectures)
+vis_full = vis(lm(Pct.BF ~. - Density - Waist, data=bodyfat))
+plot(vis_full, which = "lvk", highlight = "Abdomen", interactive=TRUE)
+plot(vis_full, which = "vip", highlight = "Abdomen", interactive=TRUE)
+
+plot(vis_full, which="boot", max.circle=0.25, highlight="Abdomen", interactive=TRUE)
+```
+
+
+### Assumption Checks
+1. Linearity
+2. Homoscedasticity
+3. Normality
+
+The following assumption checking, looks at the step.back.aic model.
+Looking at linearity assumption
+```{r}
+par(mfrow = c(3, 3))
+for (i in 1:length(model_vars)){
+        x = bodyfat[model_vars][[model_vars[i]]]
+        y = bodyfat$Pct.BF
+        plot(x,y, xlab=model_vars[i])
+        abline(lm(y~x))
+}
+```
+There is some concern over the linearity assumption in our Age and Height predictors (Open up plot in separate window to observe better plotting).
+
+
+```{r}
+par(mfrow=c(2,2))
+plot(step.back.aic)
+autoplot(step.back.aic, which=c(1:2))
+
+step.back.aic$residuals
+```
+QQ plot suggests that the normality assumption is satisfied. 
+Relative flatness of red line in top left plot indicates homoscedasticity. There appears to be rather equal spread of residuals. 
+
+
+
